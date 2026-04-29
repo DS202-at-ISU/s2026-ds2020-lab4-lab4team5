@@ -1,0 +1,184 @@
+---
+title: "Lab 4 Progress Report"
+author: "Shashank Koneru"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(rvest)
+library(readr)
+library(Lahman)
+```
+
+
+```{r}
+url <- "https://www.baseball-reference.com/awards/hof_2026.shtml"
+url
+```
+
+## Scraping the Baseball Reference Hall of Fame 2026 page
+
+```{r}
+html <- read_html(url)
+
+tables <- html_table(html)
+
+length(tables)
+```
+
+
+Because the page has multiple tables, I inspected the first table because the lab slides showed that the Hall of Fame voting table is stored in `tables[[1]]`.
+
+```{r}
+head(tables[[1]], 5)
+```
+
+## Cleaning the scraped table
+
+
+```{r}
+data <- tables[[1]]
+
+actual_column_names <- data[1, ]
+
+colnames(data) <- actual_column_names
+
+data <- data[-1, ]
+
+head(data, 5)
+```
+
+## Selecting useful variables
+
+
+```{r}
+hof_2026 <- data %>%
+  select(Name, Votes, `%vote`) %>%
+  mutate(
+    year = 2026,
+    candidate_name = gsub("X-", "", Name),
+    votes = as.numeric(Votes),
+    percent_vote = readr::parse_number(`%vote`),
+    inducted = ifelse(percent_vote >= 75, "Y", "N")
+  ) %>%
+  select(
+    candidate_name,
+    year,
+    votes,
+    percent_vote,
+    inducted
+  )
+
+head(hof_2026)
+```
+
+## Checking the cleaned data
+
+Checking the structure of the cleaned data to make sure that votes, year, and percent_vote are numeric:
+
+```{r}
+str(hof_2026)
+```
+
+How many candidates were marked as inducted / not inducted:
+
+```{r}
+hof_2026 %>%
+  count(inducted)
+```
+
+Candidates marked as inducted:
+
+```{r}
+hof_2026 %>%
+  filter(inducted == "Y")
+```
+
+## Comparing to Lahman
+
+Comparing the scraped Baseball Reference data to the 2026 Hall of Fame data stored in the Lahman package:
+
+```{r}
+lahman_2026 <- HallOfFame %>%
+  filter(yearID == 2026)
+
+lahman_2026
+```
+
+Number of rows in the scraped Baseball Reference data is:
+
+```{r}
+nrow(hof_2026)
+```
+
+Number of rows in the Lahman 2026 Hall of Fame data is:
+
+```{r}
+nrow(lahman_2026)
+```
+
+The Lahman data summarized by voting body and induction status.
+
+```{r}
+lahman_2026 %>%
+  count(votedBy, inducted)
+```
+
+
+```{r}
+HallOfFame %>% 
+  ggplot(aes(x = yearID, fill = inducted)) +
+  geom_bar() +
+  xlim(c(1936, 2026))
+```
+
+
+
+
+## Explanation of differences
+
+The Baseball Reference table and the Lahman `HallOfFame` table do not match row-for-row because they are storing different parts of the Hall of Fame voting process.
+
+The Baseball Reference 2026 page shows the full BBWAA ballot for 2026. This means it includes all BBWAA candidates who appeared on the writer ballot, including players who were not inducted.
+
+The Lahman data for 2026 shown in this lab uses the Contemporary Baseball Era voting body instead of the BBWAA ballot. Because of this, Lahman has fewer rows and contains different candidates. This is why the number of rows and the names of players do not fully match between the two sources.
+
+## Which players were inducted in the scraped data?
+
+According to the cleaned Baseball Reference data, the players inducted by the BBWAA are:
+
+```{r}
+hof_2026 %>%
+  filter(inducted == "Y") %>%
+  select(candidate_name, votes, percent_vote)
+```
+
+## Are the same players represented in Lahman?
+
+To compare names directly, I checked the Lahman player IDs and induction status. Lahman does not store the candidate names directly in the `HallOfFame` table, so a direct name comparison would require joining with another Lahman table, such as `People`.
+
+```{r}
+lahman_2026 %>%
+  select(playerID, yearID, votedBy, votes, inducted, needed_note)
+```
+
+The scraped Baseball Reference data and Lahman data do not contain the exact same candidates for 2026 because Baseball Reference is showing the BBWAA ballot, while the Lahman rows shown here are from the Contemporary Baseball Era committee.
+
+## Saving the cleaned dataset
+
+Finally, I saved the cleaned Baseball Reference Hall of Fame 2026 data as a CSV file.
+
+```{r}
+readr::write_csv(hof_2026, "HallOfFame_2026.csv")
+```
+
+I checked the saved file by reading it back into R.
+
+```{r}
+check_file <- readr::read_csv("HallOfFame_2026.csv")
+
+head(check_file)
+```
