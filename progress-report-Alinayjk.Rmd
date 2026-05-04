@@ -9,22 +9,87 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Imports:
+```{r}
+library(rvest)
+library(dplyr)
+library(readr)
+library(Lahman)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
 ```
 
-## Including Plots
+Scraping(making the scrapper):
+```{r}
+url <- "https://www.baseball-reference.com/awards/hof_2026.shtml"
 
-You can also embed plots, for example:
+bbwaa_scraper <- function(url, year) {
+  site <- read_html(url)
+  data <- site %>%
+    html_element("#hof_BBWAA") %>%
+    html_table()
+  colnames(data) <- data[1, ]
+  data <- data[-1, ]
+  
+  data <- data %>%
+    select(Name, Votes, `%vote`) %>%
+    mutate(
+      yearID = year,
+      Votes = as.numeric(Votes),
+      percent_vote = parse_number(`%vote`),
+      Name = gsub("[*#]", "", Name),
+      inducted = ifelse(percent_vote >= 75, "Y", "N")
+    )
+  return(data)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+}
+
+```
+Comment: I fixed messy headers form the BBWAA voting table, keept only Name, Votes and %vote as they are most relevant, converted Votes to numeric to ensure consistency and proper calculation, as well as %vote (where I used parse_number) and created yearID to help filter and inducted which checks the 75% or greater rule
+
+
+
+Scraping 2026 data:
+```{r}
+url_2026 <- "https://www.baseball-reference.com/awards/hof_2026.shtml"
+
+hof_2026 <- bbwaa_scraper(url_2026, 2026)
+
+head(hof_2026)
+
+summary(hof_2026)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+lahman:
+```{r}
+lahman_2026 <- HallOfFame %>%
+  filter(yearID == 2026)
+```
+
+
+comparing:
+```{r}
+hof_2026 %>%
+  count(inducted)
+#N = 25, Y = 2
+lahman_2026 %>%
+  count(votedBy, inducted)
+#N = 7, Y = 1
+setdiff(hof_2026$Name, lahman_2026$name)
+#[1] "Carlos Beltrán"      "Andruw Jones"        "Chase Utley"        
+# [4] "Andy Pettitte"       "Félix Hernández"     "Alex Rodriguez"     
+# [7] "X-Manny Ramirez"     "Bobby Abreu"         "Jimmy Rollins"      
+#[10] "Cole Hamels"         "Dustin Pedroia"      "Mark Buehrle"       
+#[13] "Omar Vizquel"        "David Wright"        "Francisco Rodríguez"
+#[16] "Torii Hunter"        "X-Ryan Braun"        "X-Edwin Encarnación"
+#[19] "X-Shin-Soo Choo"     "X-Hunter Pence"      "X-Matt Kemp"        
+#[22] "X-Rick Porcello"     "X-Nick Markakis"     "X-Alex Gordon"      
+#[25] "X-Daniel Murphy"     "X-Howie Kendrick"    "X-Gio Gonzalez" 
+```
+Comment: the lahman data is very different, which is because the website shows the full ballot while Lahman doesn't. Lahman also uses playerID instead of names which makes comparrison dificult if you do not convert anything.
+
+
+now save:
+```{r}
+write_csv(hof_2026, "hof_2026.csv")
+```
